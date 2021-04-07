@@ -1,0 +1,61 @@
+---
+# tasks file for masterrole
+ - name: Installing docker package
+   package: 
+         name: docker
+         state: present
+ - name: Starting the services
+   service:
+         name: docker
+         state: started
+ - name: Configuring repo for kubelet 
+   template:
+         src: kube.repo
+         dest: /etc/yum.repos.d/kubernetes.repo
+ - name: Installing kubelet
+   shell:
+         cmd: yum install -y kubelet kubeadm kubectl --disableexcludes=kubernetes
+ - name: Starting kubelet services
+   service:
+         name: kubelet
+         state: started
+         enabled: yes
+ - name: Pulling the kubeadm config images
+   shell:
+         cmd: kubeadm config images pull
+ - name: Setting up systemd driver(docker)
+   template:
+         src: daemon.json
+         dest: /etc/docker/daemon.json
+ - name: Restarting docker services
+   service:
+           name: docker
+           state: restarted
+ - name: Installing iproute-tc
+   package:
+         name: iproute-tc
+         state: present
+ - name: Enabling bridge network
+   template:
+           src: k8s.conf
+           dest: /etc/sysctl.d/k8s.conf
+ - name: Reloading the system
+   shell:
+           cmd: sysctl --system
+ - name: Master Initialisation
+   shell:
+         cmd: kubeadm init --pod-network-cidr=10.244.0.0/16 --ignore-preflight-errors=NumCPU --ignore-preflight-errors=Mem
+   register: q
+ - debug: 
+        var: q.rc
+ - name: Creating token
+   shell: kubeadm token create --print-join-command
+   register: t
+ - debug:
+         var: t
+ - name: Creating master as User
+   shell: "{{ item }}"
+   with_items:
+           - "mkdir -p $HOME/.kube"
+           - "cp -i /etc/kubernetes/admin.conf $HOME/.kube/config"
+           - "chown $(id -u):$(id -g) $HOME/.kube/config"
